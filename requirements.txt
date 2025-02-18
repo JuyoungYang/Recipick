@@ -1,0 +1,29 @@
+# Django & DRF
+Django==4.2.9
+djangorestframework==3.14.0
+
+# Database
+mysqlclient==2.2.1
+
+# Web UI
+streamlit==1.31.1
+
+# API Communication
+requests==2.31.0
+openai==1.12.0
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# Code Formatting
+black==24.1.1
+
+# CORS
+django-cors-headers==4.3.1
+
+# API Documentation
+drf-yasg==1.21.7
+
+# Data Processing
+pandas==2.2.0
+numpy==1.26.4
