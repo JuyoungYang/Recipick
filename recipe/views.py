@@ -5,7 +5,7 @@ from rest_framework import status
 
 from .models import Recipe
 from .serializers import RecipeSerializer
-from chatbot_app.models import ChatLog
+from chatbot.models import ChatLog
 
 # 1) 재료 입력 - /api/recipes/input/ (POST)
 class RecipeInputView(APIView):
