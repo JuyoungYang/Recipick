@@ -8,8 +8,8 @@ import openai  # pip install openai
 
 from .models import ChatLog
 from .serializers import ChatLogSerializer
-from recipe_app.models import Recipe
-from recipe_app.serializers import RecipeSerializer
+from recipe.models import Recipe
+from recipe.serializers import RecipeSerializer
 
 # 6) OpenAI 챗봇 응답 - /api/chatbot/message/ (POST)
 class ChatbotMessageView(APIView):   
