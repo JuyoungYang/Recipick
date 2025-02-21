@@ -149,20 +149,42 @@ st.markdown(
 with st.sidebar:
     st.title("Recipick")
 
-    # ===== 백엔드 담당자: 필터 기능 구현 필요 =====
-    # GET /api/recipes/filter/ 엔드포인트와 연결
-    # 조리시간과 인분 수에 따른 필터링 로직 구현
+    # 조리시간 (다중 선택 가능 - 체크박스)
     st.markdown("### 조리시간")
-    st.checkbox("5분 이내")
-    st.checkbox("5~15분")
-    st.checkbox("15~30분")
-    st.checkbox("30분 이상")
+    time_filters = {
+        "5분 이내": st.checkbox("5분 이내", key="time_5min"),
+        "5~15분": st.checkbox("5~15분", key="time_5_15min"),
+        "15~30분": st.checkbox("15~30분", key="time_15_30min"),
+        "30분 이상": st.checkbox("30분 이상", key="time_over_30min"),
+    }
 
+    # 선택된 조리시간 필터 저장
+    selected_times = [time for time, selected in time_filters.items() if selected]
+
+    # 양 (단일 선택 - 라디오 버튼)
     st.markdown("### 몇인분")
-    st.checkbox("1인분")
-    st.checkbox("2인분")
-    st.checkbox("4인분")
-    st.checkbox("6인분 이상")
+    serving_size = st.radio(
+        "인분",
+        options=["1인분", "2인분", "4인분", "6인분 이상"],
+        key="serving_size",
+        label_visibility="collapsed",
+    )
+
+    # 필터 초기화 버튼
+    if st.button("필터 초기화"):
+        # 세션 스테이트의 필터 관련 키들을 초기화
+        for key in st.session_state.keys():
+            if key.startswith("time_") or key == "serving_size":
+                del st.session_state[key]
+
+        # 체크박스와 라디오 버튼의 상태를 초기화
+        st.session_state.time_5min = False
+        st.session_state.time_5_15min = False
+        st.session_state.time_15_30min = False
+        st.session_state.time_over_30min = False
+        st.session_state.serving_size = None  # 또는 "1인분"과 같은 기본값
+
+        st.experimental_rerun()
 
 # 초기 메시지 표시
 if not st.session_state.messages:
