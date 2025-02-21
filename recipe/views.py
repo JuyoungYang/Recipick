@@ -103,7 +103,7 @@ class RecipeRecommendRefreshView(APIView):
         return Response({
             "status": "success",
             "message": "새로운 추천 리스트가 생성되었습니다.",
-            "recipes": serializer.data
+            "recipes": serializer.data   
         }, status=status.HTTP_200_OK)
 
 # Create your views here.
