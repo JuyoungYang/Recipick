@@ -2,10 +2,11 @@ import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status   
-
+from rest_framework.generics import ListAPIView
 from .models import Recipe
 from .serializers import RecipeSerializer
 from chatbot.models import ChatLog
+
 
 # 1) 재료 입력 - /api/recipes/input/ (POST)
 class RecipeInputView(APIView):
@@ -107,3 +108,6 @@ class RecipeRecommendRefreshView(APIView):
         }, status=status.HTTP_200_OK)
 
 # Create your views here.
+class RecipeListView(ListAPIView):
+    queryset = Recipe.objects.all()
+    serializer_class = RecipeSerializer

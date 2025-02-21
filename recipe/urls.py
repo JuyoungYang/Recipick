@@ -3,7 +3,12 @@ from .views import (
     RecipeInputView, RecipeRecommendView, RecipeFilterView,
     RecipeDetailView, RecipeRecommendRefreshView
 )
+from django.urls import path
+from .views import RecipeListView
 
+urlpatterns = [
+    path('api/recipes/', RecipeListView.as_view(), name='recipe-list'),
+]
 urlpatterns = [
     path('input/', RecipeInputView.as_view(), name='recipe-input'),               # POST
     path('recommend/', RecipeRecommendView.as_view(), name='recipe-recommend'),   # GET

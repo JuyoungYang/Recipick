@@ -1,4 +1,5 @@
 import streamlit as st
+import requests
 
 # ===== DB 담당자가 구현할 부분 =====
 # 1. Recipe 테이블 생성
