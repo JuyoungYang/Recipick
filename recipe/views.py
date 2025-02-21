@@ -89,7 +89,7 @@ class RecipeDetailView(APIView):
 
 
 # 5) 추천 리스트 다시 받기 - /api/recipes/recommend/refresh/ (POST)
-class RecipeRecommendRefreshView(APIView):
+class RecipeRecommendRefreshView(APIView):  
     """
     새로운 추천 레시피 요청
     """
