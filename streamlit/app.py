@@ -17,7 +17,7 @@ RECIPE_DETAILS = {
         "cook_time": "15분",
         "servings": "2인분",
         "ingredients": [
-            "밥 2공기",
+            "밥 2공기",  
             "김치 1컵",
             "햄 100g",
             "식용유 2큰술",
