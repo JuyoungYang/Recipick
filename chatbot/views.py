@@ -6,12 +6,12 @@ from dotenv import load_dotenv
 from rest_framework.views import APIView
 from rest_framework.response import Response  
 from rest_framework import status
-
 from recipe.utils import save_recipe_with_ai_instructions
 from recipe.models import Recipe  # Recipe 모델은 새 스키마에 맞게 필드가 정의되어야 함 (CKG_NM, CKG_MTRL_CN, CKG_INBUN_NM, CKG_TIME_NM, RCP_IMG_URL, CKG_METHOD_CN)
 from recipe.serializers import RecipeListSerializer
 from .models import ChatLog
 from django.shortcuts import get_object_or_404
+
 
 # 환경 변수 로드 및 OpenAI API 키 설정
 load_dotenv()
@@ -19,14 +19,17 @@ client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 class GenerateInstructionsView(APIView):
+
     """
     레시피 조리방법 생성 API
     - Recipe 조회 후, AI를 통해 조리방법(CKG_METHOD_CN) 생성 및 DB 저장
     """
 
+
     def get(self, request, recipe_id):
         try:
             recipe = get_object_or_404(Recipe, id=recipe_id)
+
 
             # 만약 이미 생성된 조리방법이 있다면 DB에서 반환
             # 수정됨: recipe.instructions → recipe.CKG_METHOD_CN 사용
@@ -48,6 +51,7 @@ class GenerateInstructionsView(APIView):
             조리 시간: {recipe.CKG_TIME_NM}
             인분: {recipe.CKG_INBUN_NM}
 
+
             위 레시피의 상세한 조리 방법을 단계별로 설명해주세요.
             각 단계는 번호를 붙여서 설명해주세요.
             """
@@ -58,6 +62,7 @@ class GenerateInstructionsView(APIView):
                     {"role": "system", "content": settings.SYSTEM_RECIPE_EXPERT},
                     {"role": "user", "content": prompt},
                 ],   
+
             )
 
             instructions = response.choices[0].message.content
@@ -65,12 +70,15 @@ class GenerateInstructionsView(APIView):
             # 생성된 조리방법 저장
             # 수정됨: recipe.instructions → recipe.CKG_METHOD_CN 저장
             recipe.CKG_METHOD_CN = instructions
+
             recipe.save()
 
             return Response(
                 {
                     "status": settings.STATUS_SUCCESS,
+
                     "recipe_name": recipe.CKG_NM,  # 수정됨
+
                     "instructions": instructions,
                 }
             )
@@ -104,6 +112,7 @@ class RecipeGenerator:
     - CSV 데이터의 빈 필드를 AI를 통해 채워 새 DB 컬럼(CKG_TIME_NM, CKG_INBUN_NM, CKG_METHOD_CN)에 저장
     """
 
+
     def __init__(self):
         self.default_image_url = f"{settings.STATIC_URL}images/default_recipe.jpg"
         self.system_message = {
@@ -132,6 +141,7 @@ class RecipeGenerator:
             return response
         except Exception as e:
             raise Exception(f"OpenAI API 호출 실패: {str(e)}")
+
 
     def process_csv_data(self, df):
         """CSV 데이터 처리: 각 행의 빈 필드 채우기"""
@@ -191,6 +201,7 @@ class ChatbotMessageView(APIView):
 
     def post(self, request):
         """POST 요청: 사용자 메시지 처리 및 응답 생성"""
+
         try:
             user_message = self._get_user_message(request)
             if not user_message:
@@ -217,6 +228,7 @@ class ChatbotMessageView(APIView):
             # 숫자(1-5)로만 이루어진 입력인지 확인
             if user_message.strip().isdigit() and 1 <= int(user_message) <= 5:
                 # 수정됨: 필드명을 새 DB 컬럼명에 맞게 변경 (CKG_NM, CKG_MTRL_CN, CKG_METHOD_CN)
+
                 recipes = Recipe.objects.filter(CKG_NM__icontains=user_message)[:5]
                 if recipes:
                     selected_recipe = recipes[int(user_message) - 1]
@@ -228,6 +240,7 @@ class ChatbotMessageView(APIView):
                     }
 
             # 일반 검색어 처리: AI를 통한 메뉴 추천
+
             response = client.chat.completions.create(
                 model=settings.GPT_MODEL_NAME,
                 messages=[
@@ -239,6 +252,7 @@ class ChatbotMessageView(APIView):
                 ],
             )
             gpt_message = response.choices[0].message.content
+
 
             # 실제 레시피 검색 (필드명을 새 DB 컬럼명에 맞게 사용)
             recipes = Recipe.objects.filter(CKG_NM__icontains=user_message)[:5]
@@ -294,6 +308,7 @@ class ChatbotMessageView(APIView):
             {"status": settings.STATUS_SUCCESS, "response": data},
             status=status.HTTP_200_OK,
         )
+
 
     def format_error_response(self, message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR):
         """에러 응답 포맷팅"""

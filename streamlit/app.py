@@ -3,7 +3,6 @@ import streamlit as st
 BASE_URL = "http://localhost:8000"
 
 
-
 # 레시피 정보를 API로부터 가져오는 함수
 def get_recipe(recipe_id):
     try:
@@ -34,6 +33,20 @@ st.markdown(
     .st-emotion-cache-1v0mbdj { color: #7C523B; }
     .stMarkdown { color: #7C523B; }
     h1, h2, h3 { color: #7C523B; }
+    /* 버튼 크기 통일 및 정렬 */
+    .button-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    .button-container button {
+        width: 300px;
+        text-align: left;
+        padding: 10px 20px;
+        font-size: 16px;
+        border-radius: 8px;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -42,24 +55,20 @@ st.markdown(
 # 사이드바 설정 (조리시간 필터, 인분 설정 등)
 with st.sidebar:
     st.title("Recipick")
-    # 조리시간 필터 (체크박스로 다중 선택 가능)
     time_filters = {
         "5분 이내": st.checkbox("5분 이내", key="time_5min"),
         "5~15분": st.checkbox("5~15분", key="time_5_15min"),
         "15~30분": st.checkbox("15~30분", key="time_15_30min"),
         "30분 이상": st.checkbox("30분 이상", key="time_over_30min"),
     }
-    # 선택된 조리시간 필터 저장
     selected_times = [time for time, selected in time_filters.items() if selected]
-    # 인분 수 설정 (단일 선택 라디오 버튼)
     serving_size = st.radio(
         "인분",
-        options=["1인분", "2인분", "4인분", "6인분 이상"],
+        ["1인분", "2인분", "4인분", "6인분 이상"],
         key="serving_size",
         label_visibility="collapsed",
     )
 
-    # 필터 초기화 버튼 (세션 상태 초기화 후 새로고침)
     if st.button("필터 초기화"):
         for key in st.session_state.keys():
             if key.startswith("time_") or key == "serving_size":
@@ -77,80 +86,85 @@ if not st.session_state.messages:
         "안녕하세요? 드시고 싶은 음식이나 사용하실 재료를 입력해주세요."
     )
 
-# 이전에 저장된 메시지들을 화면에 표시
+# 이전 메시지 표시
 for message_idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.write(message["content"])
-        # assistant 메시지에 레시피가 있을 경우에만 버튼 표시
+
         if (
             message["role"] == "assistant"
             and "recipes" in message
             and isinstance(message["recipes"], list)
         ):
-            # 버튼들을 세로로 배치
-            for recipe_idx, recipe in enumerate(message["recipes"]):
+
+            st.markdown('<div class="button-container">', unsafe_allow_html=True)
+
+            # 레시피 버튼 생성
+            for recipe_idx, recipe in enumerate(message["recipes"], 1):
                 button_key = f"recipe_msg{message_idx}_recipe{recipe_idx}"
-                if st.button(f"📝 레시피 {recipe_idx + 1} 보기", key=button_key):
+                # DB 컬럼명 CKG_NM 사용 (요리 이름)
+                button_label = f"{recipe_idx}. {recipe.get('CKG_NM', '레시피')}"
+                if st.button(button_label, key=button_key):
                     try:
-                        # 먼저 레시피 정보 가져오기
                         recipe_response = requests.get(
                             f"http://localhost:8000/api/recipes/{recipe['id']}/"
                         )
-                        if recipe_response.status_code == 200:
-                            recipe_detail = recipe_response.json()
+                        recipe_response.raise_for_status()
+                        recipe_detail = recipe_response.json()
 
-                            # AI로 조리방법 생성 요청
-                            instructions_response = requests.get(
-                                f"http://localhost:8000/api/chatbot/generate-instructions/{recipe['id']}/"
+                        # AI로 조리방법 생성 요청 → DB 컬럼 CKG_METHOD_CN 에 할당
+                        instructions_response = requests.get(
+                            f"http://localhost:8000/api/chatbot/generate-instructions/{recipe['id']}/"
+                        )
+                        if instructions_response.status_code == 200:
+                            instructions_data = instructions_response.json()
+                            recipe_detail["CKG_METHOD_CN"] = instructions_data.get(
+                                "instructions", ""
                             )
-                            if instructions_response.status_code == 200:
-                                instructions_data = instructions_response.json()
-                                # 생성된 조리방법을 레시피 상세 정보에 추가
-                                recipe_detail["instructions"] = instructions_data.get(
-                                    "instructions", ""
-                                )
 
-                            st.session_state.selected_recipe = recipe_detail.get(
-                                "recipe", {}
-                            )
-                            st.experimental_rerun()
-
+                        # API 응답 구조에 따라 recipe 키가 존재할 수 있으므로 fallback 처리
+                        st.session_state.selected_recipe = (
+                            recipe_detail.get("recipe") or recipe_detail
+                        )
+                        st.experimental_rerun()
                     except Exception as e:
                         st.error(f"레시피를 불러오는데 실패했습니다: {str(e)}")
 
-# 선택된 레시피에 대한 세부 정보 표시
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+# 선택된 레시피 세부 정보 표시
 if st.session_state.selected_recipe:
     st.markdown("---")
     recipe = st.session_state.selected_recipe
 
-    # name이 빈 문자열일 경우 "레시피"로 표시
-    title = recipe.get("name") or "레시피"
+    # DB 컬럼명 CKG_NM 사용 (요리 이름)
+    title = recipe.get("CKG_NM") or "레시피"
     st.title(title)
 
-    # 이미지 크기 조절 (width=400 으로 설정)
-    if recipe.get("image"):
-        st.image(
-            recipe.get("image"), width=400
-        )  # use_column_width=True 제거하고 width 지정
+    # DB 컬럼 RCP_IMG_URL 사용 (요리 이미지 URL)
+    if recipe.get("RCP_IMG_URL"):
+        st.image(recipe["RCP_IMG_URL"], width=400)
 
     st.header("🔸 기본 정보")
-    st.write(f"• 조리시간: {recipe.get('cook_time', '-')}")
-    st.write(f"• 양: {recipe.get('servings', '-')}")
+    # DB 컬럼 CKG_TIME_NM (조리 시간) 및 CKG_INBUN_NM (인분)
+    st.write(f"• 조리시간: {recipe.get('CKG_TIME_NM', '-')}")
+    st.write(f"• 인분: {recipe.get('CKG_INBUN_NM', '-')}")
 
     st.header("🔸 재료")
-    ingredients = recipe.get("ingredients", "-")
+    # DB 컬럼 CKG_MTRL_CN 사용 (재료 목록)
+    ingredients = recipe.get("CKG_MTRL_CN", "-")
     if isinstance(ingredients, str):
-        ingredients_parts = ingredients.split("|")
-        for part in ingredients_parts:
+        for part in ingredients.split("|"):
             st.write(f"• {part.strip()}")
     else:
         st.write(ingredients)
 
     st.header("🔸 만드는 법")
-    instructions = recipe.get("instructions")
+    # DB 컬럼 CKG_METHOD_CN 사용 (조리 방법, AI 생성)
+    instructions = recipe.get("CKG_METHOD_CN", "")
     if instructions:
-        steps = instructions.split("\n")
-        for i, step in enumerate(steps, 1):
+        for i, step in enumerate(instructions.split("\n"), 1):
             if step.strip():
                 st.write(f"{i}. {step.strip()}")
     else:
@@ -160,77 +174,30 @@ if st.session_state.selected_recipe:
         st.session_state.selected_recipe = None
         st.experimental_rerun()
 
-# 사용자 입력 받기 (입력된 쿼리에 대해 레시피 추천)
-# ------------------------------
-# 6. 사용자 입력 처리: 챗봇 입력창
-# ------------------------------
-if query := st.chat_input("예시: 볶음밥이 먹고싶어! 또는 김치로 만들 수 있는 요리 추천해줘!"):
-    # 사용자 입력 메시지를 세션에 저장
+
+# 사용자 입력 받기
+if query := st.chat_input(
+    "예시: 볶음밥이 먹고싶어! 또는 김치로 만들 수 있는 요리 추천해줘!"
+):
     st.session_state.messages.append({"role": "user", "content": query})
-    
-    # session_id가 없으면 생성 (이미 있으면 그대로 사용)
+
     if "session_id" not in st.session_state:
-        st.session_state.session_id = "my-session-id"  # [수정됨: 예시 session_id 생성]
-    
-    # bot_text 초기화 (모든 실행 경로에서 정의되도록)
-    bot_text = ""  # [수정됨: 초기값 설정]
-    recipes = []   # [수정됨: 초기값 설정]
-    
-    try:
-        # 챗봇 API 호출 (POST /api/chatbot/message/)
-        response = requests.post(
-            f"{BASE_URL}/api/chatbot/message/",
-            json={"message": query, "session_id": st.session_state.session_id},
-        )
-        response.raise_for_status()
+        st.session_state.session_id = "my-session-id"
+
+    response = requests.post(
+        "http://localhost:8000/api/chatbot/message/",
+        json={"message": query, "session_id": st.session_state.session_id},
+    )
+
+    if response.status_code == 200:
         data = response.json()
         response_data = data.get("response", {})
-        # bot_text에는 챗봇의 응답 텍스트가 저장되어야 함
-        bot_text = response_data.get("response", "챗봇 응답을 받아오지 못했습니다.")  # [수정됨: bot_text 정의]
-        recipes = response_data.get("recipes", [])  # [수정됨: recipes 정의]
-    except Exception as e:
-        # 예외 발생 시에도 bot_text와 recipes를 정의합니다.
-        bot_text = f"오류 발생: {str(e)}"  # [수정됨: bot_text 정의 in except]
-        recipes = []  # [수정됨: recipes 초기화 in except]
-    
-    # 챗봇 응답과 함께 추천 목록을 세션에 저장 (키: "recipes" 사용)
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": bot_text,  # [수정됨: bot_text 사용]
-        "recipes": recipes    # [수정됨: recipes 사용]
-    })
-    
-    st.experimental_rerun()  
+        bot_text = response_data.get("response", "챗봇 응답을 받아오지 못했습니다.")
+        recipes = response_data.get("recipes", [])
 
+        st.session_state.messages.append(
+            {"role": "assistant", "content": bot_text, "recipes": recipes}
+        )
 
-# 선택된 레시피에 대한 세부 정보 표시
-if st.session_state.selected_recipe:
-    st.markdown("---")
-    recipe_id = st.session_state.selected_recipe["id"]
-    recipe = get_recipe(recipe_id)  # 선택된 레시피의 상세 정보 가져오기
+    st.rerun()
 
-    if recipe:
-        st.title(recipe["name"])  # 레시피 제목
-        st.image(
-            recipe["image"], caption=recipe["name"], use_column_width=True
-        )  # 이미지 표시
-
-        # 기본 정보 (조리시간, 양)
-        st.header("🔸 기본 정보")
-        st.write(f"• 조리시간: {recipe['cook_time']}")
-        st.write(f"• 양: {recipe['servings']}")
-
-        # 재료 목록 표시
-        st.header("🔸 재료")
-        for ingredient in recipe["ingredients"]:
-            st.write(f"• {ingredient}")
-
-        # 만드는 법 표시
-        st.header("🔸 만드는 법")
-        for i, step in enumerate(recipe["instructions"], 1):
-            st.write(f"{i}. {step}")
-
-        # 뒤로가기 버튼 (상태 초기화 후 새로고침)
-        if st.button("← 뒤로가기"):
-            st.session_state.selected_recipe = None
-            st.experimental_rerun()
