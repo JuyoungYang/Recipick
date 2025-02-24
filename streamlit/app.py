@@ -112,9 +112,12 @@ for message_idx, message in enumerate(st.session_state.messages):
                             f"http://localhost:8000/api/recipes/{recipe['id']}/"
                         )
                         recipe_response.raise_for_status()
-                        recipe_detail = recipe_response.json()
+                        recipe_data = recipe_response.json()
 
-                        # AI로 조리방법 생성 요청 → DB 컬럼 CKG_METHOD_CN 에 할당
+                        # recipe_data에서 실제 레시피 데이터 추출
+                        recipe_detail = recipe_data.get("recipe", {})
+
+                        # AI로 조리방법 생성 요청
                         instructions_response = requests.get(
                             f"http://localhost:8000/api/chatbot/generate-instructions/{recipe['id']}/"
                         )
@@ -124,10 +127,8 @@ for message_idx, message in enumerate(st.session_state.messages):
                                 "instructions", ""
                             )
 
-                        # API 응답 구조에 따라 recipe 키가 존재할 수 있으므로 fallback 처리
-                        st.session_state.selected_recipe = (
-                            recipe_detail.get("recipe") or recipe_detail
-                        )
+                        # 직접 recipe_detail 할당
+                        st.session_state.selected_recipe = recipe_detail
                         st.experimental_rerun()
 
                     except Exception as e:

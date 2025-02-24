@@ -15,7 +15,7 @@ class RecipeListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Recipe
-        fields = ["id", "name", "image", "cook_time", "servings"]
+        fields = ["id", "CKG_NM", "RCP_IMG_URL", "CKG_TIME_NM", "CKG_INBUN_NM"]
 
 
 class FilteredRecipeSerializer(serializers.ModelSerializer):
@@ -23,7 +23,7 @@ class FilteredRecipeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Recipe
-        fields = ["id", "name", "cook_time", "servings"]
+        fields = ["id", "CKG_NM", "CKG_TIME_NM", "CKG_INBUN_NM"]
 
 
 class RecipeDetailSerializer(serializers.ModelSerializer):
@@ -33,12 +33,12 @@ class RecipeDetailSerializer(serializers.ModelSerializer):
         model = Recipe
         fields = [
             "id",
-            "name",
-            "image",
-            "cook_time",
-            "servings",
-            "ingredients",
-            "instructions",
+            "CKG_NM",
+            "RCP_IMG_URL",
+            "CKG_TIME_NM",
+            "CKG_INBUN_NM",
+            "CKG_MTRL_CN",
+            "CKG_METHOD_CN",
         ]
 
 
