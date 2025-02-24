@@ -223,53 +223,26 @@ class ChatbotMessageView(APIView):
 
     def _process_user_message(self, user_message, session_id):
         try:
-            # 숫자(1-5)로만 이루어진 입력인지 확인
-            if user_message.strip().isdigit() and 1 <= int(user_message) <= 5:
-                # 실제 레시피 데이터베이스에서 검색
-                recipes = Recipe.objects.all()[:5]  # 최근 5개 레시피 가져오기
-                if recipes:
-                    recipe_index = int(user_message) - 1
-                    if recipe_index < len(recipes):
-                        selected_recipe = recipes[recipe_index]
-                        return {
-                            "response": f"{selected_recipe.CKG_NM}의 레시피입니다:\n\n"
-                            f"재료: {selected_recipe.CKG_MTRL_CN}\n"
-                            f"조리방법: {selected_recipe.CKG_METHOD_CN}",
-                            "recipes": [],
-                        }
-
-            # DB에서 먼저 레시피 검색
+            # DB에서 레시피 검색
             recipes = Recipe.objects.filter(CKG_NM__icontains=user_message)[:5]
+            recipe_list = RecipeListSerializer(recipes, many=True).data
+
             if not recipes:
-                # 검색 결과가 없을 경우, 더 일반적인 검색어로 시도
+                # 검색 결과가 없을 경우, 단어별로 검색
                 search_terms = user_message.split()
                 for term in search_terms:
                     recipes = Recipe.objects.filter(CKG_NM__icontains=term)[:5]
+                    recipe_list = RecipeListSerializer(recipes, many=True).data
                     if recipes:
                         break
 
-            recipe_list = RecipeListSerializer(recipes, many=True).data
-
-            # AI 응답 생성
-            response = client.chat.completions.create(
-                model=settings.GPT_MODEL_NAME,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "사용자가 요리를 검색하면 메뉴 추천만 해주세요. 레시피는 알려주지 마세요.",
-                    },
-                    {"role": "user", "content": user_message},
-                ],
-            )
-            gpt_message = response.choices[0].message.content
-
             return {
-                "response": gpt_message + "\n\n아래 메뉴 중에서 선택해주세요!",
+                "response": "아래 메뉴 중에서 선택해주세요!",
                 "recipes": recipe_list,
             }
 
         except Exception as e:
-            raise Exception(f"OpenAI API 호출 실패: {str(e)}")
+            raise Exception(f"레시피 검색 실패: {str(e)}")
 
     def _get_recent_chat_history(self, session_id, max_turns=settings.MAX_CHAT_TURNS):
         """최근 채팅 기록 불러오기 (최대 max_turns 만큼)"""
