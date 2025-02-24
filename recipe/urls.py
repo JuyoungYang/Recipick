@@ -1,18 +1,17 @@
 from django.urls import path
-from .views import (
-    RecipeInputView, RecipeRecommendView, RecipeFilterView,
-    RecipeDetailView, RecipeRecommendRefreshView
-)
-from django.urls import path
-from .views import RecipeListView
+from . import views
+
+app_name = "recipe"
 
 urlpatterns = [
-    path('api/recipes/', RecipeListView.as_view(), name='recipe-list'),
+    path("input/", views.input_ingredients, name="recipe-input"),
+    path("recommend/", views.recommend_recipes, name="recipe-recommend"),
+    path("filter/", views.filter_recipes, name="recipe-filter"),
+    path("<int:recipe_id>/", views.recipe_detail, name="recipe-detail"),
+    path("recommend/refresh/", views.refresh_recommendations, name="recipe-refresh"),
+    path(
+        "generate-instructions/<int:recipe_id>/",
+        views.GenerateInstructionsView.as_view(),
+        name="generate-instructions",
+    ),
 ]
-urlpatterns = [
-    path('input/', RecipeInputView.as_view(), name='recipe-input'),               # POST
-    path('recommend/', RecipeRecommendView.as_view(), name='recipe-recommend'),   # GET
-    path('filter/', RecipeFilterView.as_view(), name='recipe-filter'),            # GET
-    path('<int:recipe_id>/', RecipeDetailView.as_view(), name='recipe-detail'),   # GET
-    path('recommend/refresh/', RecipeRecommendRefreshView.as_view(), name='recipe-recommend-refresh'),  # POST   
-]  
