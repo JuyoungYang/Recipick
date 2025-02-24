@@ -99,8 +99,11 @@ for message_idx, message in enumerate(st.session_state.messages):
             st.markdown('<div class="button-container">', unsafe_allow_html=True)
 
             # 레시피 버튼 생성
-            for recipe_idx, recipe in enumerate(message["recipes"], 1):
+            for recipe_idx, recipe in enumerate(
+                message["recipes"][:5], 1
+            ):  # 5개로 제한
                 button_key = f"recipe_msg{message_idx}_recipe{recipe_idx}"
+                button_label = f"{recipe_idx}. {recipe.get('CKG_NM', '레시피')}"
                 # DB 컬럼명 CKG_NM 사용 (요리 이름)
                 button_label = f"{recipe_idx}. {recipe.get('CKG_NM', '레시피')}"
                 if st.button(button_label, key=button_key):
