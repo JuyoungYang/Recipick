@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+BASE_URL = "http://localhost:8000"
 
 
 # 레시피 정보를 API로부터 가져오는 함수
@@ -32,7 +33,6 @@ st.markdown(
     .st-emotion-cache-1v0mbdj { color: #7C523B; }
     .stMarkdown { color: #7C523B; }
     h1, h2, h3 { color: #7C523B; }
-
     /* 버튼 크기 통일 및 정렬 */
     .button-container {
         display: flex;
@@ -80,7 +80,7 @@ with st.sidebar:
         st.session_state.serving_size = None
         st.experimental_rerun()
 
-# 초기 메시지 표시
+# 초기 메시지 표시 (대화창에 첫 메시지 띄우기)
 if not st.session_state.messages:
     st.chat_message("assistant").write(
         "안녕하세요? 드시고 싶은 음식이나 사용하실 재료를 입력해주세요."
@@ -96,6 +96,7 @@ for message_idx, message in enumerate(st.session_state.messages):
             and "recipes" in message
             and isinstance(message["recipes"], list)
         ):
+
             st.markdown('<div class="button-container">', unsafe_allow_html=True)
 
             # 레시피 버튼 생성
@@ -126,9 +127,9 @@ for message_idx, message in enumerate(st.session_state.messages):
                             recipe_detail.get("recipe") or recipe_detail
                         )
                         st.experimental_rerun()
-
                     except Exception as e:
                         st.error(f"레시피를 불러오는데 실패했습니다: {str(e)}")
+
 
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -173,6 +174,7 @@ if st.session_state.selected_recipe:
         st.session_state.selected_recipe = None
         st.experimental_rerun()
 
+
 # 사용자 입력 받기
 if query := st.chat_input(
     "예시: 볶음밥이 먹고싶어! 또는 김치로 만들 수 있는 요리 추천해줘!"
@@ -198,3 +200,4 @@ if query := st.chat_input(
         )
 
     st.rerun()
+

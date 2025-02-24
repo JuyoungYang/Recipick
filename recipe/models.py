@@ -29,7 +29,7 @@ class Recipe(models.Model):
         max_length=200,
         verbose_name="요리명",
         null=False,
-    )
+    )  
     instructions = models.TextField(
         verbose_name="조리방법",
         null=True,
