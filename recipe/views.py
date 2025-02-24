@@ -1,18 +1,17 @@
-"""
-레시피 API 뷰
-"""
-
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
+from django.conf import settings
+import openai
 from .models import Recipe
 from .serializers import (
     RecipeInputSerializer,
-    RecipeListSerializer,  # recommend_recipes에서 사용
-    FilteredRecipeSerializer,  # filter_recipes에서 사용
-    RecipeDetailSerializer,  # recipe_detail에서 사용
-    RefreshRecommendationSerializer,  # refresh_recommendations에서 사용
+    RecipeListSerializer,
+    FilteredRecipeSerializer,
+    RecipeDetailSerializer,
+    RefreshRecommendationSerializer,
 )
 
 
@@ -23,30 +22,32 @@ def input_ingredients(request):
     if not serializer.is_valid():
         return Response(
             {
-                "status": "error",
+                "status": settings.STATUS_ERROR,
                 "message": "잘못된 입력입니다.",
                 "errors": serializer.errors,
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # TODO: 실제 재료 저장 로직 구현
-
-    return Response({"status": "success", "message": "입력된 재료가 저장되었습니다."})
+    return Response(
+        {"status": settings.STATUS_SUCCESS, "message": "입력된 재료가 저장되었습니다."}
+    )
 
 
 @api_view(["GET"])
 def recommend_recipes(request):
     """AI 추천 레시피 목록 조회"""
     try:
-        # TODO: 실제 AI 추천 로직 구현
         recipes = Recipe.objects.all()[:5]
         serializer = RecipeListSerializer(recipes, many=True)
 
-        return Response({"status": "success", "recipes": serializer.data})
+        return Response({"status": settings.STATUS_SUCCESS, "recipes": serializer.data})
     except Exception as e:
         return Response(
-            {"status": "error", "message": "레시피 추천 중 오류가 발생했습니다."},
+            {
+                "status": settings.STATUS_ERROR,
+                "message": "레시피 추천 중 오류가 발생했습니다.",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -68,11 +69,13 @@ def filter_recipes(request):
             recipes = recipes.filter(servings=int(servings))
 
         serializer = FilteredRecipeSerializer(recipes, many=True)
-        return Response({"status": "success", "filtered_recipes": serializer.data})
+        return Response(
+            {"status": settings.STATUS_SUCCESS, "filtered_recipes": serializer.data}
+        )
 
     except ValueError:
         return Response(
-            {"status": "error", "message": "잘못된 입력값입니다."},
+            {"status": settings.STATUS_ERROR, "message": "잘못된 입력값입니다."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -83,15 +86,18 @@ def recipe_detail(request, recipe_id):
     try:
         recipe = get_object_or_404(Recipe, id=recipe_id)
         serializer = RecipeDetailSerializer(recipe)
-        return Response({"status": "success", "recipe": serializer.data})
+        return Response({"status": settings.STATUS_SUCCESS, "recipe": serializer.data})
     except Recipe.DoesNotExist:
         return Response(
-            {"status": "error", "message": "해당 레시피를 찾을 수 없습니다."},
+            {
+                "status": settings.STATUS_ERROR,
+                "message": "해당 레시피를 찾을 수 없습니다.",
+            },
             status=status.HTTP_404_NOT_FOUND,
         )
     except Exception as e:
         return Response(
-            {"status": "error", "message": "레시피 조회 중 오류가 발생했습니다."},
+            {"status": settings.STATUS_ERROR, "message": settings.UNKNOWN_ERROR},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -103,7 +109,7 @@ def refresh_recommendations(request):
     if not serializer.is_valid():
         return Response(
             {
-                "status": "error",
+                "status": settings.STATUS_ERROR,
                 "message": "잘못된 입력입니다.",
                 "errors": serializer.errors,
             },
@@ -112,18 +118,96 @@ def refresh_recommendations(request):
 
     try:
         user_id = serializer.validated_data["user_id"]
-        # TODO: 실제 새로운 추천 로직 구현
         recipes = Recipe.objects.all()[:5]
 
         return Response(
             {
-                "status": "success",
+                "status": settings.STATUS_SUCCESS,
                 "message": "새로운 추천 리스트가 생성되었습니다.",
                 "recipes": RecipeListSerializer(recipes, many=True).data,
             }
         )
     except Exception as e:
         return Response(
-            {"status": "error", "message": "추천 새로고침 중 오류가 발생했습니다."},
+            {
+                "status": settings.STATUS_ERROR,
+                "message": "추천 새로고침 중 오류가 발생했습니다.",
+            },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+class GenerateInstructionsView(APIView):
+    def get(self, request, recipe_id):
+        try:
+            recipe = get_object_or_404(Recipe, id=recipe_id)
+
+            # 1. 데이터베이스에서 조리 방법 확인
+            if recipe.cooking_instructions:
+                return Response(
+                    {
+                        "status": settings.STATUS_SUCCESS,
+                        "recipe_name": recipe.name,
+                        "instructions": recipe.cooking_instructions,
+                        "source": "database",
+                    }
+                )
+
+            # 2. 데이터베이스에 없는 경우 GPT로 생성
+            openai.api_key = settings.OPENAI_API_KEY
+
+            prompt = f"""
+            레시피 이름: {recipe.name}
+            필요한 재료: {recipe.ingredients}
+            조리 시간: {recipe.cook_time}분
+            인분: {recipe.servings}인분
+            
+            위 레시피의 상세한 조리 방법을 단계별로 설명해주세요.
+            """
+
+            response = openai.ChatCompletion.create(
+                model=settings.GPT_MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": settings.SYSTEM_RECIPE_EXPERT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=1000,
+            )
+
+            instructions = response.choices[0].message.content.strip()
+
+            # 생성된 레시피를 데이터베이스에 저장
+            recipe.cooking_instructions = instructions
+            recipe.save()
+
+            return Response(
+                {
+                    "status": settings.STATUS_SUCCESS,
+                    "recipe_name": recipe.name,
+                    "instructions": instructions,
+                    "source": "ai",
+                }
+            )
+
+        except Recipe.DoesNotExist:
+            return Response(
+                {
+                    "status": settings.STATUS_ERROR,
+                    "message": "레시피를 찾을 수 없습니다.",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except openai.error.OpenAIError as e:
+            return Response(
+                {
+                    "status": settings.STATUS_ERROR,
+                    "message": f"AI 생성 중 오류가 발생했습니다: {str(e)}",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            return Response(
+                {"status": settings.STATUS_ERROR, "message": settings.UNKNOWN_ERROR},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
