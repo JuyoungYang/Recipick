@@ -22,86 +22,12 @@ client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
 class GenerateInstructionsView(APIView):
     """
-    레시피 조리방법 생성 API
-    - Recipe 조회 후, AI를 통해 조리방법(CKG_METHOD_CN) 생성 및 DB 저장
+    레시피 조리방법 생성 API - recipe 앱의 API로 리디렉션
     """
 
     def get(self, request, recipe_id):
-        try:
-            recipe = get_object_or_404(Recipe, id=recipe_id)
-
-            # 만약 이미 생성된 조리방법이 있다면 DB에서 반환
-            # 수정됨: recipe.instructions → recipe.CKG_METHOD_CN 사용
-            if recipe.CKG_METHOD_CN:
-                return Response(
-                    {
-                        "status": settings.STATUS_SUCCESS,
-                        "recipe_name": recipe.CKG_NM,  # 수정됨: recipe.name → recipe.CKG_NM
-                        "instructions": recipe.CKG_METHOD_CN,  # 수정됨
-                        "source": "database",
-                    }
-                )
-
-            # AI로 조리방법 생성
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-
-            # 수정됨: 필드명을 새 DB 컬럼명에 맞게 변경
-            prompt = f"""
-            레시피 이름: {recipe.CKG_NM}
-            재료: {recipe.CKG_MTRL_CN}
-            조리 시간: {recipe.CKG_TIME_NM}
-            인분: {recipe.CKG_INBUN_NM}
-
-
-            위 레시피의 상세한 조리 방법을 단계별로 설명해주세요.
-            각 단계는 번호를 붙여서 설명해주세요.
-            """
-
-            response = client.chat.completions.create(
-                model=settings.GPT_MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": settings.SYSTEM_RECIPE_EXPERT},
-                    {"role": "user", "content": prompt},
-                ],
-            )
-
-            instructions = response.choices[0].message.content
-
-            # 생성된 조리방법 저장
-            # 수정됨: recipe.instructions → recipe.CKG_METHOD_CN 저장
-            recipe.CKG_METHOD_CN = instructions
-
-            recipe.save()
-
-            return Response(
-                {
-                    "status": settings.STATUS_SUCCESS,
-                    "recipe_name": recipe.CKG_NM,  # 수정됨
-                    "instructions": instructions,
-                }
-            )
-
-        except Recipe.DoesNotExist:
-            return Response(
-                {
-                    "status": settings.STATUS_ERROR,
-                    "message": "레시피를 찾을 수 없습니다.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        except openai.OpenAIError as e:
-            return Response(
-                {
-                    "status": settings.STATUS_ERROR,
-                    "message": f"AI 생성 중 오류가 발생했습니다: {str(e)}",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        except Exception as e:
-            return Response(
-                {"status": settings.STATUS_ERROR, "message": settings.UNKNOWN_ERROR},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        # recipe 앱의 API로 리디렉션
+        return redirect(f"/api/recipes/generate-instructions/{recipe_id}/")
 
 
 class RecipeGenerator:

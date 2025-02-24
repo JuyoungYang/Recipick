@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+import re
 
 
 # 레시피 정보를 API로부터 가져오는 함수
@@ -106,7 +107,7 @@ for message_idx, message in enumerate(st.session_state.messages):
 
                             # AI로 조리방법 생성 요청
                             instructions_response = requests.get(
-                                f"http://localhost:8000/api/chatbot/generate-instructions/{recipe['id']}/"
+                                f"http://localhost:8000/api/recipes/generate-instructions/{recipe['id']}/"
                             )
                             if instructions_response.status_code == 200:
                                 instructions_data = instructions_response.json()
@@ -152,15 +153,15 @@ if st.session_state.selected_recipe:
     # DB 컬럼 CKG_METHOD_CN 사용 (조리 방법, AI 생성)
     instructions = recipe.get("CKG_METHOD_CN", "")
     if instructions:
-        for i, step in enumerate(instructions.split("\n"), 1):
-            if step.strip():
-                st.write(f"{i}. {step.strip()}")
+        lines = instructions.split("\n")
+
+        for line in lines:
+            line = line.strip()
+            if line:
+                # 그대로 표시
+                st.write(line)
     else:
         st.write("조리 방법이 준비되지 않았습니다.")
-
-    if st.button("← 뒤로가기"):
-        st.session_state.selected_recipe = None
-        st.experimental_rerun()
 
 # 사용자 입력 받기
 if query := st.chat_input(
