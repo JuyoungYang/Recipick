@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 db_config = {
     "host": "localhost",
     "user": "root",
-    "password": "0311",     # 비밀번호 확인
+    "password": "0311",  # 비밀번호 확인
     "database": "recipick",  # ✅ 데이터베이스 이름 확인
 }
 
@@ -15,7 +15,7 @@ try:
     df = pd.read_csv(
         "./data/recipe_01.csv",
         encoding="cp949",  # ✅ 인코딩 변경 (필요시 cp949 사용)
-        usecols=["CKG_NM", "CKG_MTRL_CN", "CKG_INBUN_NM", "CKG_TIME_NM", "RCP_IMG_URL"]
+        usecols=["CKG_NM", "CKG_MTRL_CN", "CKG_INBUN_NM", "CKG_TIME_NM", "RCP_IMG_URL"],
     )
 
     # 결측치 처리
