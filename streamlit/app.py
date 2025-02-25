@@ -163,6 +163,10 @@ if st.session_state.selected_recipe:
     else:
         st.write("조리 방법이 준비되지 않았습니다.")
 
+    if st.button("← 뒤로가기"):
+        st.session_state.selected_recipe = None
+        st.experimental_rerun()
+
 # 사용자 입력 받기
 if query := st.chat_input(
     "예시: 볶음밥이 먹고싶어! 또는 김치로 만들 수 있는 요리 추천해줘!"
