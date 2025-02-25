@@ -143,29 +143,29 @@ class GenerateInstructionsView(APIView):
             recipe = get_object_or_404(Recipe, id=recipe_id)
 
             # 1. 데이터베이스에서 조리 방법 확인
-            if recipe.cooking_instructions:
+            if recipe.CKG_METHOD_CN:
                 return Response(
                     {
                         "status": settings.STATUS_SUCCESS,
-                        "recipe_name": recipe.name,
-                        "instructions": recipe.cooking_instructions,
+                        "recipe_name": recipe.CKG_NM,
+                        "instructions": recipe.CKG_METHOD_CN,
                         "source": "database",
                     }
                 )
 
             # 2. 데이터베이스에 없는 경우 GPT로 생성
-            openai.api_key = settings.OPENAI_API_KEY
+            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
             prompt = f"""
-            레시피 이름: {recipe.name}
-            필요한 재료: {recipe.ingredients}
-            조리 시간: {recipe.cook_time}분
-            인분: {recipe.servings}인분
+            레시피 이름: {recipe.CKG_NM}
+            필요한 재료: {recipe.CKG_MTRL_CN}
+            조리 시간: {recipe.CKG_TIME_NM}
+            인분: {recipe.CKG_INBUN_NM}
             
             위 레시피의 상세한 조리 방법을 단계별로 설명해주세요.
             """
 
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model=settings.GPT_MODEL_NAME,
                 messages=[
                     {"role": "system", "content": settings.SYSTEM_RECIPE_EXPERT},
@@ -175,16 +175,16 @@ class GenerateInstructionsView(APIView):
                 max_tokens=1000,
             )
 
-            instructions = response.choices[0].message.content.strip()
+            instructions = response.choices[0].message.content
 
             # 생성된 레시피를 데이터베이스에 저장
-            recipe.cooking_instructions = instructions
+            recipe.CKG_METHOD_CN = instructions
             recipe.save()
 
             return Response(
                 {
                     "status": settings.STATUS_SUCCESS,
-                    "recipe_name": recipe.name,
+                    "recipe_name": recipe.CKG_NM,
                     "instructions": instructions,
                     "source": "ai",
                 }
@@ -198,16 +198,8 @@ class GenerateInstructionsView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
-        except openai.error.OpenAIError as e:
-            return Response(
-                {
-                    "status": settings.STATUS_ERROR,
-                    "message": f"AI 생성 중 오류가 발생했습니다: {str(e)}",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
         except Exception as e:
             return Response(
-                {"status": settings.STATUS_ERROR, "message": settings.UNKNOWN_ERROR},
+                {"status": settings.STATUS_ERROR, "message": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

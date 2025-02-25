@@ -4,10 +4,12 @@ import pandas as pd
 from django.conf import settings
 from dotenv import load_dotenv
 from rest_framework.views import APIView
-from rest_framework.response import Response  
+from rest_framework.response import Response
 from rest_framework import status
 from recipe.utils import save_recipe_with_ai_instructions
-from recipe.models import Recipe  # Recipe 모델은 새 스키마에 맞게 필드가 정의되어야 함 (CKG_NM, CKG_MTRL_CN, CKG_INBUN_NM, CKG_TIME_NM, RCP_IMG_URL, CKG_METHOD_CN)
+from recipe.models import (
+    Recipe,
+)  # Recipe 모델은 새 스키마에 맞게 필드가 정의되어야 함 (CKG_NM, CKG_MTRL_CN, CKG_INBUN_NM, CKG_TIME_NM, RCP_IMG_URL, CKG_METHOD_CN)
 from recipe.serializers import RecipeListSerializer
 from .models import ChatLog
 from django.shortcuts import get_object_or_404
@@ -19,91 +21,13 @@ client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 class GenerateInstructionsView(APIView):
-
     """
-    레시피 조리방법 생성 API
-    - Recipe 조회 후, AI를 통해 조리방법(CKG_METHOD_CN) 생성 및 DB 저장
+    레시피 조리방법 생성 API - recipe 앱의 API로 리디렉션
     """
-
 
     def get(self, request, recipe_id):
-        try:
-            recipe = get_object_or_404(Recipe, id=recipe_id)
-
-
-            # 만약 이미 생성된 조리방법이 있다면 DB에서 반환
-            # 수정됨: recipe.instructions → recipe.CKG_METHOD_CN 사용
-            if recipe.CKG_METHOD_CN:
-                return Response({
-                    "status": settings.STATUS_SUCCESS,
-                    "recipe_name": recipe.CKG_NM,  # 수정됨: recipe.name → recipe.CKG_NM
-                    "instructions": recipe.CKG_METHOD_CN,  # 수정됨
-                    "source": "database",
-                })
-
-            # AI로 조리방법 생성
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-
-            # 수정됨: 필드명을 새 DB 컬럼명에 맞게 변경
-            prompt = f"""
-            레시피 이름: {recipe.CKG_NM}
-            재료: {recipe.CKG_MTRL_CN}
-            조리 시간: {recipe.CKG_TIME_NM}
-            인분: {recipe.CKG_INBUN_NM}
-
-
-            위 레시피의 상세한 조리 방법을 단계별로 설명해주세요.
-            각 단계는 번호를 붙여서 설명해주세요.
-            """
-
-            response = client.chat.completions.create(
-                model=settings.GPT_MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": settings.SYSTEM_RECIPE_EXPERT},
-                    {"role": "user", "content": prompt},
-                ],   
-
-            )
-
-            instructions = response.choices[0].message.content
-
-            # 생성된 조리방법 저장
-            # 수정됨: recipe.instructions → recipe.CKG_METHOD_CN 저장
-            recipe.CKG_METHOD_CN = instructions
-
-            recipe.save()
-
-            return Response(
-                {
-                    "status": settings.STATUS_SUCCESS,
-
-                    "recipe_name": recipe.CKG_NM,  # 수정됨
-
-                    "instructions": instructions,
-                }
-            )
-
-        except Recipe.DoesNotExist:
-            return Response(
-                {
-                    "status": settings.STATUS_ERROR,
-                    "message": "레시피를 찾을 수 없습니다.",
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        except openai.OpenAIError as e:
-            return Response(
-                {
-                    "status": settings.STATUS_ERROR,
-                    "message": f"AI 생성 중 오류가 발생했습니다: {str(e)}",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        except Exception as e:
-            return Response(
-                {"status": settings.STATUS_ERROR, "message": settings.UNKNOWN_ERROR},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        # recipe 앱의 API로 리디렉션
+        return redirect(f"/api/recipes/generate-instructions/{recipe_id}/")
 
 
 class RecipeGenerator:
@@ -111,7 +35,6 @@ class RecipeGenerator:
     레시피 생성을 담당하는 클래스
     - CSV 데이터의 빈 필드를 AI를 통해 채워 새 DB 컬럼(CKG_TIME_NM, CKG_INBUN_NM, CKG_METHOD_CN)에 저장
     """
-
 
     def __init__(self):
         self.default_image_url = f"{settings.STATIC_URL}images/default_recipe.jpg"
@@ -141,7 +64,6 @@ class RecipeGenerator:
             return response
         except Exception as e:
             raise Exception(f"OpenAI API 호출 실패: {str(e)}")
-
 
     def process_csv_data(self, df):
         """CSV 데이터 처리: 각 행의 빈 필드 채우기"""
@@ -176,11 +98,14 @@ class RecipeGenerator:
 
 
 class ChatbotMessageView(APIView):
-    """
-    사용자 메시지를 처리하는 View
-    - GET: 임시 추천 레시피 목록 반환
-    - POST: 사용자 입력에 따른 레시피 검색 및 AI 메뉴 추천, 채팅 로그 저장
-    """
+    def get(self, request):
+        # 수정: 정확히 5개의 추천 레시피 목록 반환
+        recipes = Recipe.objects.all()[:5]
+        recipe_list = RecipeListSerializer(recipes, many=True).data
+        return Response(
+            {"status": "success", "response": {"recipes": recipe_list[:5]}},
+            status=status.HTTP_200_OK,
+        )
 
     def __init__(self):
         super().__init__()
@@ -196,7 +121,7 @@ class ChatbotMessageView(APIView):
         recipe_list = RecipeListSerializer(recipes, many=True).data
         return Response(
             {"status": "success", "response": {"recipes": recipe_list}},
-            status=status.HTTP_200_OK,   
+            status=status.HTTP_200_OK,
         )
 
     def post(self, request):
@@ -223,48 +148,27 @@ class ChatbotMessageView(APIView):
         return request.data.get("message", "")
 
     def _process_user_message(self, user_message, session_id):
-        """사용자 메시지 처리: 숫자 입력일 경우 상세 레시피 반환, 그렇지 않으면 AI 메뉴 추천"""
         try:
-            # 숫자(1-5)로만 이루어진 입력인지 확인
-            if user_message.strip().isdigit() and 1 <= int(user_message) <= 5:
-                # 수정됨: 필드명을 새 DB 컬럼명에 맞게 변경 (CKG_NM, CKG_MTRL_CN, CKG_METHOD_CN)
-
-                recipes = Recipe.objects.filter(CKG_NM__icontains=user_message)[:5]
-                if recipes:
-                    selected_recipe = recipes[int(user_message) - 1]
-                    return {
-                        "response": f"{selected_recipe.CKG_NM}의 레시피입니다:\n\n"
-                                    f"재료: {selected_recipe.CKG_MTRL_CN}\n"
-                                    f"조리방법: {selected_recipe.CKG_METHOD_CN}",
-                        "recipes": [],
-                    }
-
-            # 일반 검색어 처리: AI를 통한 메뉴 추천
-
-            response = client.chat.completions.create(
-                model=settings.GPT_MODEL_NAME,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "사용자가 요리를 검색하면 메뉴 추천만 해주세요. 레시피는 알려주지 마세요.",
-                    },
-                    {"role": "user", "content": user_message},
-                ],
-            )
-            gpt_message = response.choices[0].message.content
-
-
-            # 실제 레시피 검색 (필드명을 새 DB 컬럼명에 맞게 사용)
+            # DB에서 레시피 검색
             recipes = Recipe.objects.filter(CKG_NM__icontains=user_message)[:5]
             recipe_list = RecipeListSerializer(recipes, many=True).data
 
+            if not recipes:
+                # 검색 결과가 없을 경우, 단어별로 검색
+                search_terms = user_message.split()
+                for term in search_terms:
+                    recipes = Recipe.objects.filter(CKG_NM__icontains=term)[:5]
+                    recipe_list = RecipeListSerializer(recipes, many=True).data
+                    if recipes:
+                        break
+
             return {
-                "response": f"{gpt_message}\n\n아래 메뉴 중에서 선택해주세요!",
+                "response": "아래 메뉴 중에서 선택해주세요!",
                 "recipes": recipe_list,
             }
 
         except Exception as e:
-            raise Exception(f"OpenAI API 호출 실패: {str(e)}")
+            raise Exception(f"레시피 검색 실패: {str(e)}")
 
     def _get_recent_chat_history(self, session_id, max_turns=settings.MAX_CHAT_TURNS):
         """최근 채팅 기록 불러오기 (최대 max_turns 만큼)"""
@@ -309,8 +213,9 @@ class ChatbotMessageView(APIView):
             status=status.HTTP_200_OK,
         )
 
-
-    def format_error_response(self, message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR):
+    def format_error_response(
+        self, message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+    ):
         """에러 응답 포맷팅"""
         return Response(
             {"status": settings.STATUS_ERROR, "message": message}, status=status_code

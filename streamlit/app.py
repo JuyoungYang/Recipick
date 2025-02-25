@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+import re
 
 
 # 레시피 정보를 API로부터 가져오는 함수
@@ -32,21 +33,6 @@ st.markdown(
     .st-emotion-cache-1v0mbdj { color: #7C523B; }
     .stMarkdown { color: #7C523B; }
     h1, h2, h3 { color: #7C523B; }
-
-    /* 버튼 크기 통일 및 정렬 */
-    .button-container {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        align-items: flex-start;
-    }
-    .button-container button {
-        width: 300px;
-        text-align: left;
-        padding: 10px 20px;
-        font-size: 16px;
-        border-radius: 8px;
-    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -87,6 +73,7 @@ if not st.session_state.messages:
     )
 
 # 이전 메시지 표시
+# 이전 메시지 표시 부분 중 버튼 생성 부분 수정
 for message_idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.write(message["content"])
@@ -96,41 +83,44 @@ for message_idx, message in enumerate(st.session_state.messages):
             and "recipes" in message
             and isinstance(message["recipes"], list)
         ):
-            st.markdown('<div class="button-container">', unsafe_allow_html=True)
+            # 레시피 버튼 생성 (컬럼 사용)
+            for recipe_idx, recipe in enumerate(message["recipes"][:5], 1):
+                # 컬럼 생성 (1:3 비율)
+                col1, col2, col3 = st.columns([0.5, 2, 6])  # 중앙 컬럼에 버튼 배치
 
-            # 레시피 버튼 생성
-            for recipe_idx, recipe in enumerate(message["recipes"], 1):
                 button_key = f"recipe_msg{message_idx}_recipe{recipe_idx}"
-                # DB 컬럼명 CKG_NM 사용 (요리 이름)
                 button_label = f"{recipe_idx}. {recipe.get('CKG_NM', '레시피')}"
-                if st.button(button_label, key=button_key):
-                    try:
-                        recipe_response = requests.get(
-                            f"http://localhost:8000/api/recipes/{recipe['id']}/"
-                        )
-                        recipe_response.raise_for_status()
-                        recipe_detail = recipe_response.json()
 
-                        # AI로 조리방법 생성 요청 → DB 컬럼 CKG_METHOD_CN 에 할당
-                        instructions_response = requests.get(
-                            f"http://localhost:8000/api/chatbot/generate-instructions/{recipe['id']}/"
-                        )
-                        if instructions_response.status_code == 200:
-                            instructions_data = instructions_response.json()
-                            recipe_detail["CKG_METHOD_CN"] = instructions_data.get(
-                                "instructions", ""
+                with col2:  # 중앙 컬럼에 버튼 배치
+                    if st.button(
+                        button_label, key=button_key, use_container_width=True
+                    ):  # 컨테이너 너비 사용
+                        try:
+                            recipe_response = requests.get(
+                                f"http://localhost:8000/api/recipes/{recipe['id']}/"
                             )
+                            recipe_response.raise_for_status()
+                            recipe_data = recipe_response.json()
 
-                        # API 응답 구조에 따라 recipe 키가 존재할 수 있으므로 fallback 처리
-                        st.session_state.selected_recipe = (
-                            recipe_detail.get("recipe") or recipe_detail
-                        )
-                        st.experimental_rerun()
+                            # recipe_data에서 실제 레시피 데이터 추출
+                            recipe_detail = recipe_data.get("recipe", {})
 
-                    except Exception as e:
-                        st.error(f"레시피를 불러오는데 실패했습니다: {str(e)}")
+                            # AI로 조리방법 생성 요청
+                            instructions_response = requests.get(
+                                f"http://localhost:8000/api/recipes/generate-instructions/{recipe['id']}/"
+                            )
+                            if instructions_response.status_code == 200:
+                                instructions_data = instructions_response.json()
+                                recipe_detail["CKG_METHOD_CN"] = instructions_data.get(
+                                    "instructions", ""
+                                )
 
-            st.markdown("</div>", unsafe_allow_html=True)
+                            # 직접 recipe_detail 할당
+                            st.session_state.selected_recipe = recipe_detail
+                            st.experimental_rerun()
+
+                        except Exception as e:
+                            st.error(f"레시피를 불러오는데 실패했습니다: {str(e)}")
 
 # 선택된 레시피 세부 정보 표시
 if st.session_state.selected_recipe:
@@ -163,15 +153,15 @@ if st.session_state.selected_recipe:
     # DB 컬럼 CKG_METHOD_CN 사용 (조리 방법, AI 생성)
     instructions = recipe.get("CKG_METHOD_CN", "")
     if instructions:
-        for i, step in enumerate(instructions.split("\n"), 1):
-            if step.strip():
-                st.write(f"{i}. {step.strip()}")
+        lines = instructions.split("\n")
+
+        for line in lines:
+            line = line.strip()
+            if line:
+                # 그대로 표시
+                st.write(line)
     else:
         st.write("조리 방법이 준비되지 않았습니다.")
-
-    if st.button("← 뒤로가기"):
-        st.session_state.selected_recipe = None
-        st.experimental_rerun()
 
 # 사용자 입력 받기
 if query := st.chat_input(

@@ -10,10 +10,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
+        """migrations.RemoveField(
             model_name="recipe",
             name="image",
-        ),
+        )""",
         migrations.RemoveField(
             model_name="recipe",
             name="name",
