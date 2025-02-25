@@ -42,6 +42,7 @@ st.markdown(
 # 사이드바 설정 (조리시간 필터, 인분 설정 등)
 with st.sidebar:
     st.title("Recipick")
+    st.subheader("⏰ 조리시간")
     time_filters = {
         "5분 이내": st.checkbox("5분 이내", key="time_5min"),
         "5~15분": st.checkbox("5~15분", key="time_5_15min"),
@@ -49,9 +50,11 @@ with st.sidebar:
         "30분 이상": st.checkbox("30분 이상", key="time_over_30min"),
     }
     selected_times = [time for time, selected in time_filters.items() if selected]
+
+    st.subheader("🍽️ 몇인분")
     serving_size = st.radio(
-        "인분",
-        ["1인분", "2인분", "4인분", "6인분 이상"],
+        label="",
+        options=["1인분", "2인분", "4인분", "6인분 이상"],
         key="serving_size",
         label_visibility="collapsed",
     )
