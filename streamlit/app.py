@@ -74,7 +74,6 @@ if not st.session_state.messages:
     )
 
 # 이전 메시지 표시
-# 이전 메시지 표시 부분 중 버튼 생성 부분 수정
 for message_idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.write(message["content"])
@@ -87,7 +86,7 @@ for message_idx, message in enumerate(st.session_state.messages):
             # 레시피 버튼 생성 (컬럼 사용)
             for recipe_idx, recipe in enumerate(message["recipes"][:5], 1):
                 # 컬럼 생성 (1:3 비율)
-                col1, col2, col3 = st.columns([0.5, 2, 6])  # 중앙 컬럼에 버튼 배치
+                col1, col2, col3 = st.columns([0.5, 3, 5])  # 중앙 컬럼에 버튼 배치
 
                 button_key = f"recipe_msg{message_idx}_recipe{recipe_idx}"
                 button_label = f"{recipe_idx}. {recipe.get('CKG_NM', '레시피')}"
@@ -96,32 +95,33 @@ for message_idx, message in enumerate(st.session_state.messages):
                     if st.button(
                         button_label, key=button_key, use_container_width=True
                     ):  # 컨테이너 너비 사용
-                        try:
-                            recipe_response = requests.get(
-                                f"http://localhost:8000/api/recipes/{recipe['id']}/"
-                            )
-                            recipe_response.raise_for_status()
-                            recipe_data = recipe_response.json()
-
-                            # recipe_data에서 실제 레시피 데이터 추출
-                            recipe_detail = recipe_data.get("recipe", {})
-
-                            # AI로 조리방법 생성 요청
-                            instructions_response = requests.get(
-                                f"http://localhost:8000/api/recipes/generate-instructions/{recipe['id']}/"
-                            )
-                            if instructions_response.status_code == 200:
-                                instructions_data = instructions_response.json()
-                                recipe_detail["CKG_METHOD_CN"] = instructions_data.get(
-                                    "instructions", ""
+                        with st.spinner("레시피 정보를 불러오는 중입니다..."):
+                            try:
+                                recipe_response = requests.get(
+                                    f"http://localhost:8000/api/recipes/{recipe['id']}/"
                                 )
+                                recipe_response.raise_for_status()
+                                recipe_data = recipe_response.json()
 
-                            # 직접 recipe_detail 할당
-                            st.session_state.selected_recipe = recipe_detail
-                            st.experimental_rerun()
+                                # recipe_data에서 실제 레시피 데이터 추출
+                                recipe_detail = recipe_data.get("recipe", {})
 
-                        except Exception as e:
-                            st.error(f"레시피를 불러오는데 실패했습니다: {str(e)}")
+                                # AI로 조리방법 생성 요청
+                                instructions_response = requests.get(
+                                    f"http://localhost:8000/api/recipes/generate-instructions/{recipe['id']}/"
+                                )
+                                if instructions_response.status_code == 200:
+                                    instructions_data = instructions_response.json()
+                                    recipe_detail["CKG_METHOD_CN"] = (
+                                        instructions_data.get("instructions", "")
+                                    )
+
+                                # 직접 recipe_detail 할당
+                                st.session_state.selected_recipe = recipe_detail
+                                st.experimental_rerun()
+
+                            except Exception as e:
+                                st.error(f"레시피를 불러오는데 실패했습니다: {str(e)}")
 
 # 선택된 레시피 세부 정보 표시
 if st.session_state.selected_recipe:
@@ -180,19 +180,39 @@ if query := st.chat_input(
     if "session_id" not in st.session_state:
         st.session_state.session_id = "my-session-id"
 
-    response = requests.post(
-        "http://localhost:8000/api/chatbot/message/",
-        json={"message": query, "session_id": st.session_state.session_id},
-    )
+    # 필터 옵션 가져오기
+    time_filters = []
+    if st.session_state.get("time_5min", False):
+        time_filters.append("5분 이내")
+    if st.session_state.get("time_5_15min", False):
+        time_filters.append("5~15분")
+    if st.session_state.get("time_15_30min", False):
+        time_filters.append("15~30분")
+    if st.session_state.get("time_over_30min", False):
+        time_filters.append("30분 이상")
 
-    if response.status_code == 200:
-        data = response.json()
-        response_data = data.get("response", {})
-        bot_text = response_data.get("response", "챗봇 응답을 받아오지 못했습니다.")
-        recipes = response_data.get("recipes", [])
+    serving_size = st.session_state.get("serving_size", None)
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": bot_text, "recipes": recipes}
+    # 로딩 스피너 추가
+    with st.spinner("레시피를 찾고 있어요... 잠시만 기다려주세요!"):
+        response = requests.post(
+            "http://localhost:8000/api/chatbot/message/",
+            json={
+                "message": query,
+                "session_id": st.session_state.session_id,
+                "time_filters": selected_times,
+                "serving_size": serving_size,
+            },
         )
+
+        if response.status_code == 200:
+            data = response.json()
+            response_data = data.get("response", {})
+            bot_text = response_data.get("response", "챗봇 응답을 받아오지 못했습니다.")
+            recipes = response_data.get("recipes", [])
+
+            st.session_state.messages.append(
+                {"role": "assistant", "content": bot_text, "recipes": recipes}
+            )
 
     st.rerun()

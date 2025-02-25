@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.conf import settings
+from django.db.models import Q
 import openai
 from .models import Recipe
 import random
@@ -35,75 +36,113 @@ def input_ingredients(request):
     )
 
 
-# recommend_recipes 함수 수정 (paste-2.txt)
 @api_view(["GET"])
 def recommend_recipes(request):
     """AI 추천 레시피 목록 조회 - 중복 이름 없이 5개 보장, 부족하면 AI가 생성"""
     try:
+        # 필터 옵션 가져오기
+        time_filters = request.query_params.getlist("time_filters", [])
+        serving_size = request.query_params.get("serving_size", None)
+        search_query = request.query_params.get("search_query", "요리")
+
+        # user_message에 search_query를 할당
+        user_message = search_query
+
         # 전체 레시피 데이터 조회
         all_recipes = Recipe.objects.all()
+
+        # 필터 적용
+        if time_filters:
+            time_conditions = Q()
+            for time_filter in time_filters:
+                if time_filter == "5분 이내":
+                    time_conditions |= Q(CKG_TIME_NM__icontains="5분") | Q(
+                        CKG_TIME_NM__regex=r"^[1-5]분$"
+                    )
+                elif time_filter == "5~15분":
+                    time_conditions |= Q(CKG_TIME_NM__regex=r"^(([5-9]|1[0-5]))분$")
+                elif time_filter == "15~30분":
+                    time_conditions |= Q(CKG_TIME_NM__regex=r"^(1[5-9]|2[0-9]|30)분$")
+                elif time_filter == "30분 이상":
+                    time_conditions |= Q(
+                        CKG_TIME_NM__regex=r"^([3-9][0-9]|[1-9][0-9]{2,})분$"
+                    )
+
+            all_recipes = all_recipes.filter(time_conditions)
+
+        if serving_size:
+            if serving_size == "1인분":
+                all_recipes = all_recipes.filter(CKG_INBUN_NM__icontains="1인분")
+            elif serving_size == "2인분":
+                all_recipes = all_recipes.filter(CKG_INBUN_NM__icontains="2인분")
+            elif serving_size == "4인분":
+                all_recipes = all_recipes.filter(CKG_INBUN_NM__icontains="4인분")
+            elif serving_size == "6인분 이상":
+                all_recipes = all_recipes.filter(
+                    Q(CKG_INBUN_NM__regex=r"^([6-9]|[1-9][0-9]+)인분$")
+                )
 
         # 추천할 레시피 목록 (ID와 이름 중복 방지)
         selected_recipes = []
         selected_ids = set()
-        selected_names = set()  # 이름 중복 방지를 위한 세트 추가
+        selected_names = set()
 
-        # 전체 레시피에서 랜덤 선택 (이름 중복 방지)
+        # 필터링된 레시피에서 랜덤 선택
         all_recipe_list = list(all_recipes)
-        random.shuffle(all_recipe_list)  # 목록을 랜덤하게 섞음
+        random.shuffle(all_recipe_list)
 
         for recipe in all_recipe_list:
-            # ID와 이름이 모두 중복되지 않는 경우에만 추가
             if recipe.id not in selected_ids and recipe.CKG_NM not in selected_names:
                 selected_recipes.append(recipe)
                 selected_ids.add(recipe.id)
                 selected_names.add(recipe.CKG_NM)
 
-                # 5개가 찼으면 중단
                 if len(selected_recipes) >= 5:
                     break
 
         # 부족한 레시피 수 계산
         missing_count = 5 - len(selected_recipes)
 
-        # 부족한 경우 AI로 새 레시피 생성
+        # AI로 새 레시피 생성 (필터 조건 반영)
         if missing_count > 0:
-            # 기본 키워드 리스트 (다양한 레시피 생성용)
-            keywords = [
-                "한식",
-                "양식",
-                "일식",
-                "중식",
-                "분식",
-                "디저트",
-                "샐러드",
-                "국",
-                "찌개",
-            ]
+            # 조리시간과 인분 기본값 설정
+            default_time = None
+            if time_filters:
+                selected_filter = random.choice(time_filters)
+                if selected_filter == "5분 이내":
+                    default_time = f"{random.randint(1, 5)}분"
+                elif selected_filter == "5~15분":
+                    default_time = f"{random.randint(5, 15)}분"
+                elif selected_filter == "15~30분":
+                    default_time = f"{random.randint(15, 30)}분"
+                elif selected_filter == "30분 이상":
+                    default_time = f"{random.randint(30, 60)}분"
 
+            default_servings = serving_size if serving_size else "2인분"
+
+            # AI 레시피 생성 로직
             for i in range(missing_count):
-                # 이미 선택된 이름과 겹치지 않는 레시피 생성을 시도
-                recipe_created = False
-                max_attempts = 3  # 최대 시도 횟수 제한
 
-                for attempt in range(max_attempts):
-                    selected_keyword = random.choice(keywords)
+                # AI로 새 레시피 생성
+                client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
-                    # AI로 새 레시피 생성
-                    client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+                prompt = f"""
+                '{user_message}'와 관련된 맛있는 음식 레시피를 하나만 생성해주세요.
 
-                    prompt = f"""
-                    '{selected_keyword}' 카테고리의 독특하고 맛있는 음식 레시피를 하나만 생성해주세요.
-                    다음 형식으로 정확하게 응답해 주세요:
-                    
-                    CKG_NM: [요리 이름]
-                    CKG_MTRL_CN: [사용된 재료 목록, 세로 막대(|)로 구분]
-                    CKG_INBUN_NM: [인분 수, 예: 2인분]
-                    CKG_TIME_NM: [조리 소요 시간, 예: 30분]
-                    
-                    요리 이름은 기존에 없는 독특한 이름으로 지어주세요.
-                    """
+                조건:
+                - 조리 시간은 {default_time} 이내여야 합니다.
+                - 인분 수는 정확히 {default_servings}인분으로 설정해주세요.
+                - 재료의 양은 {default_servings}인분에 맞게 조절해주세요.
 
+                다음 형식으로 응답해 주세요:
+
+                CKG_NM: [요리 이름]
+                CKG_MTRL_CN: [사용된 재료 목록과 정확한 양(g, ml 등 단위 포함), 각 재료는 세로 막대(|)로 구분]
+                CKG_INBUN_NM: {default_servings}
+                CKG_TIME_NM: {default_time}
+                """
+
+                try:
                     response = client.chat.completions.create(
                         model=settings.GPT_MODEL_NAME,
                         messages=[
@@ -141,8 +180,12 @@ def recommend_recipes(request):
                         new_recipe = Recipe.objects.create(
                             CKG_NM=recipe_name,
                             CKG_MTRL_CN=recipe_data.get("CKG_MTRL_CN", ""),
-                            CKG_INBUN_NM=recipe_data.get("CKG_INBUN_NM", "2인분"),
-                            CKG_TIME_NM=recipe_data.get("CKG_TIME_NM", "30분"),
+                            CKG_INBUN_NM=recipe_data.get(
+                                "CKG_INBUN_NM", default_servings
+                            ),
+                            CKG_TIME_NM=recipe_data.get(
+                                "CKG_TIME_NM", default_time if default_time else "30분"
+                            ),
                             RCP_IMG_URL=default_image_url,
                         )
 
@@ -178,35 +221,12 @@ def recommend_recipes(request):
                         # 결과 목록에 추가
                         selected_recipes.append(new_recipe)
                         selected_names.add(recipe_name)
-                        recipe_created = True
-                        break
 
-                # 최대 시도 횟수를 초과해도 생성 실패한 경우
-                if not recipe_created:
-                    unique_name = f"AI 추천 레시피 {i+1} ({selected_keyword})"
-                    # 기본 이미지 URL 설정
-                    default_image_url = settings.DEFAULT_RECIPE_IMAGE_PATH
+                except Exception as e:
+                    print(f"레시피 생성 실패: {str(e)}")
+                    continue
 
-                    # 기본 레시피 생성
-                    new_recipe = Recipe.objects.create(
-                        CKG_NM=unique_name,
-                        CKG_MTRL_CN="다양한 식재료",
-                        CKG_INBUN_NM="2인분",
-                        CKG_TIME_NM="30분",
-                        RCP_IMG_URL=default_image_url,
-                    )
-
-                    # 간단한 조리방법 생성
-                    new_recipe.CKG_METHOD_CN = (
-                        f"{selected_keyword} 스타일의 요리를 만듭니다."
-                    )
-                    new_recipe.save()
-
-                    # 결과 목록에 추가
-                    selected_recipes.append(new_recipe)
-                    selected_names.add(unique_name)
-
-        # 직렬화
+        # 직렬화 및 반환
         serializer = RecipeListSerializer(selected_recipes, many=True)
 
         return Response({"status": settings.STATUS_SUCCESS, "recipes": serializer.data})

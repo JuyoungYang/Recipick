@@ -1,20 +1,19 @@
 import json
 import openai
 import pandas as pd
+import random
 from django.conf import settings
+from django.db.models import Q
 from dotenv import load_dotenv
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from recipe.utils import save_recipe_with_ai_instructions
-from recipe.models import (
-    Recipe,
-)  # Recipe 모델은 새 스키마에 맞게 필드가 정의되어야 함 (CKG_NM, CKG_MTRL_CN, CKG_INBUN_NM, CKG_TIME_NM, RCP_IMG_URL, CKG_METHOD_CN)
+from recipe.models import Recipe
 from recipe.serializers import RecipeListSerializer
 from .models import ChatLog
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
-import random
 
 
 # 환경 변수 로드 및 OpenAI API 키 설정
@@ -151,6 +150,10 @@ class ChatbotMessageView(APIView):
 
     def _process_user_message(self, user_message, session_id):
         try:
+            # 필터 옵션 가져오기 (요청에서)
+            time_filters = self.request.data.get("time_filters", [])
+            serving_size = self.request.data.get("serving_size", None)
+
             # 유저 메시지로 검색할 키워드 추출
             search_terms = [
                 term.strip() for term in user_message.split() if len(term.strip()) > 0
@@ -158,12 +161,19 @@ class ChatbotMessageView(APIView):
 
             # DB에서 레시피 검색 (ID와 이름 중복 없이)
             recipe_list = []
-            found_recipe_ids = set()  # ID 중복 방지
-            found_recipe_names = set()  # 이름 중복 방지
+            found_recipe_ids = set()
+            found_recipe_names = set()
 
-            # 전체 메시지로 먼저 검색
-            recipes = Recipe.objects.filter(CKG_NM__icontains=user_message)
-            for recipe in recipes:
+            # 전체 쿼리
+            recipes_query = Recipe.objects.filter(CKG_NM__icontains=user_message)
+
+            # 필터 적용
+            recipes_query = self._apply_filters(
+                recipes_query, time_filters, serving_size
+            )
+
+            # 결과 처리
+            for recipe in recipes_query:
                 if (
                     recipe.id not in found_recipe_ids
                     and recipe.CKG_NM not in found_recipe_names
@@ -180,8 +190,12 @@ class ChatbotMessageView(APIView):
                         continue
 
                     # 이름으로 검색
-                    name_recipes = Recipe.objects.filter(CKG_NM__icontains=term)
-                    for recipe in name_recipes:
+                    name_query = Recipe.objects.filter(CKG_NM__icontains=term)
+                    name_query = self._apply_filters(
+                        name_query, time_filters, serving_size
+                    )
+
+                    for recipe in name_query:
                         if (
                             recipe.id not in found_recipe_ids
                             and recipe.CKG_NM not in found_recipe_names
@@ -192,10 +206,14 @@ class ChatbotMessageView(APIView):
                             recipe_list.append(RecipeListSerializer(recipe).data)
 
                     # 재료로 검색
-                    ingredient_recipes = Recipe.objects.filter(
+                    ingredient_query = Recipe.objects.filter(
                         CKG_MTRL_CN__icontains=term
                     )
-                    for recipe in ingredient_recipes:
+                    ingredient_query = self._apply_filters(
+                        ingredient_query, time_filters, serving_size
+                    )
+
+                    for recipe in ingredient_query:
                         if (
                             recipe.id not in found_recipe_ids
                             and recipe.CKG_NM not in found_recipe_names
@@ -209,37 +227,34 @@ class ChatbotMessageView(APIView):
                     if len(recipe_list) >= 5:
                         break
 
-            # 5개 미만이면 AI로 생성하여 DB에 저장 후 추가
+            # 5개 미만이면 AI로 생성 (필터에 맞게 설정)
             if len(recipe_list) < 5:
                 missing_count = 5 - len(recipe_list)
                 client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
+                # 조리시간과 인분 기본값 설정
+                default_time = self._get_default_time(time_filters)
+                default_servings = serving_size if serving_size else "2인분"
+
                 for i in range(missing_count):
-                    # 검색어를 기반으로 키워드 선택
+                    # 검색어와 필터를 반영한 레시피 생성
                     search_keyword = (
                         random.choice(search_terms)
                         if search_terms
                         else user_message[:10]
                     )
 
-                    # 이미 선택된 이름과 겹치지 않는 레시피 생성을 시도
-                    recipe_created = False
-                    max_attempts = 3  # 최대 시도 횟수 제한
+                    prompt = f"""
+                    '{user_message}' 관련된 맛있는 음식 레시피를 하나만 생성해주세요.
+                    다음 형식으로 정확하게 응답해 주세요:
+                    
+                    CKG_NM: [요리 이름]
+                    CKG_MTRL_CN: [사용된 재료 목록, 세로 막대(|)로 구분]
+                    CKG_INBUN_NM: {default_servings}
+                    CKG_TIME_NM: {default_time}
+                    """
 
-                    for attempt in range(max_attempts):
-                        # AI로 새 레시피 생성
-                        prompt = f"""
-                        '{search_keyword}' 관련된 맛있는 음식 레시피를 하나만 생성해주세요.
-                        다음 형식으로 정확하게 응답해 주세요:
-                        
-                        CKG_NM: [요리 이름]
-                        CKG_MTRL_CN: [사용된 재료 목록, 세로 막대(|)로 구분]
-                        CKG_INBUN_NM: [인분 수, 예: 2인분]
-                        CKG_TIME_NM: [조리 소요 시간, 예: 30분]
-                        
-                        요리 이름은 기존에 없는 독특한 이름으로 지어주세요.
-                        """
-
+                    try:
                         response = client.chat.completions.create(
                             model=settings.GPT_MODEL_NAME,
                             messages=[
@@ -267,7 +282,7 @@ class ChatbotMessageView(APIView):
 
                         # 레시피 이름 중복 확인
                         recipe_name = recipe_data.get(
-                            "CKG_NM", f"{search_keyword} 추천 레시피"
+                            "CKG_NM", f"{user_message} 추천 레시피"
                         )
 
                         # 이름이 중복되지 않는 경우에만 저장
@@ -279,8 +294,12 @@ class ChatbotMessageView(APIView):
                             new_recipe = Recipe.objects.create(
                                 CKG_NM=recipe_name,
                                 CKG_MTRL_CN=recipe_data.get("CKG_MTRL_CN", ""),
-                                CKG_INBUN_NM=recipe_data.get("CKG_INBUN_NM", "2인분"),
-                                CKG_TIME_NM=recipe_data.get("CKG_TIME_NM", "30분"),
+                                CKG_INBUN_NM=recipe_data.get(
+                                    "CKG_INBUN_NM", default_servings
+                                ),
+                                CKG_TIME_NM=recipe_data.get(
+                                    "CKG_TIME_NM", default_time
+                                ),
                                 RCP_IMG_URL=default_image_url,
                             )
 
@@ -314,41 +333,10 @@ class ChatbotMessageView(APIView):
                             new_recipe.save()
 
                             # 결과 목록에 추가
-                            recipe_data = RecipeListSerializer(new_recipe).data
-                            recipe_list.append(recipe_data)
+                            recipe_list.append(RecipeListSerializer(new_recipe).data)
                             found_recipe_names.add(recipe_name)
-                            recipe_created = True
-                            break
-
-                    # 최대 시도 횟수를 초과해도 생성 실패한 경우
-                    if not recipe_created:
-                        unique_name = f"{search_keyword} 추천 레시피 {i+1}"
-                        # 이미 해당 이름이 있는지 확인
-                        if unique_name in found_recipe_names:
-                            unique_name = f"{search_keyword} 추천 레시피 {i+1} - {random.randint(1000, 9999)}"
-
-                        # 기본 이미지 URL 설정
-                        default_image_url = settings.DEFAULT_RECIPE_IMAGE_PATH
-
-                        # 기본 레시피 생성
-                        new_recipe = Recipe.objects.create(
-                            CKG_NM=unique_name,
-                            CKG_MTRL_CN=f"{search_keyword}|다양한 식재료",
-                            CKG_INBUN_NM="2인분",
-                            CKG_TIME_NM="30분",
-                            RCP_IMG_URL=default_image_url,
-                        )
-
-                        # 간단한 조리방법 생성
-                        new_recipe.CKG_METHOD_CN = (
-                            f"{search_keyword}를 활용한 요리입니다."
-                        )
-                        new_recipe.save()
-
-                        # 결과 목록에 추가
-                        recipe_data = RecipeListSerializer(new_recipe).data
-                        recipe_list.append(recipe_data)
-                        found_recipe_names.add(unique_name)
+                    except Exception as e:
+                        print(f"레시피 생성 실패: {str(e)}")
 
             return {
                 "response": "아래 메뉴 중에서 선택해주세요!",
@@ -357,6 +345,61 @@ class ChatbotMessageView(APIView):
 
         except Exception as e:
             raise Exception(f"레시피 검색 실패: {str(e)}")
+
+    # 필터 적용 헬퍼 메서드
+    def _apply_filters(self, query, time_filters, serving_size):
+        # 조리시간 필터 적용
+        if time_filters:
+            time_conditions = Q()
+            for time_filter in time_filters:
+                if time_filter == "5분 이내":
+                    time_conditions |= Q(CKG_TIME_NM__icontains="5분") | Q(
+                        CKG_TIME_NM__regex=r"^[1-5]분$"
+                    )
+                elif time_filter == "5~15분":
+                    time_conditions |= Q(CKG_TIME_NM__regex=r"^(([5-9]|1[0-5]))분$")
+                elif time_filter == "15~30분":
+                    time_conditions |= Q(CKG_TIME_NM__regex=r"^(1[5-9]|2[0-9]|30)분$")
+                elif time_filter == "30분 이상":
+                    time_conditions |= Q(
+                        CKG_TIME_NM__regex=r"^([3-9][0-9]|[1-9][0-9]{2,})분$"
+                    )
+
+            query = query.filter(time_conditions)
+
+        # 인분 필터 적용
+        if serving_size:
+            if serving_size == "1인분":
+                query = query.filter(CKG_INBUN_NM__icontains="1인분")
+            elif serving_size == "2인분":
+                query = query.filter(CKG_INBUN_NM__icontains="2인분")
+            elif serving_size == "4인분":
+                query = query.filter(CKG_INBUN_NM__icontains="4인분")
+            elif serving_size == "6인분 이상":
+                query = query.filter(
+                    Q(CKG_INBUN_NM__regex=r"^([6-9]|[1-9][0-9]+)인분$")
+                )
+
+        return query
+
+    # AI 레시피 생성 시 기본 조리시간 선택
+    def _get_default_time(self, time_filters):
+        if not time_filters:
+            return "30분"
+
+        # 선택된 필터 중 하나를 랜덤하게 선택
+        selected_filter = random.choice(time_filters)
+
+        if selected_filter == "5분 이내":
+            return f"{random.randint(1, 5)}분"
+        elif selected_filter == "5~15분":
+            return f"{random.randint(5, 15)}분"
+        elif selected_filter == "15~30분":
+            return f"{random.randint(15, 30)}분"
+        elif selected_filter == "30분 이상":
+            return f"{random.randint(30, 60)}분"
+
+        return "30분"  # 기본값
 
     def _get_recent_chat_history(self, session_id, max_turns=settings.MAX_CHAT_TURNS):
         """최근 채팅 기록 불러오기 (최대 max_turns 만큼)"""
