@@ -9,7 +9,8 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-import os    
+
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 import openai
@@ -141,6 +142,7 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DEFAULT_RECIPE_IMAGE_PATH = "static/images/default_recipe.jpg"
 
 # 상수 정의
 STATUS_SUCCESS = "success"
