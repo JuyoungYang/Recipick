@@ -10,7 +10,16 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+import openai
+import os
+
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -81,15 +90,15 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DATABASES = {
-	'default': { 
-    	'ENGINE': 'django.db.backends.mysql', 
-        'NAME': 'recipe', 
-        'USER': 'root', 
-        'PASSWORD': '0311', 
-        'HOST': 'localhost', 
-        'PORT': '3306', 
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": os.getenv("DB_NAME"),
+        "USER": os.getenv("DB_USER"),
+        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "HOST": os.getenv("DB_HOST"),
+        "PORT": os.getenv("DB_PORT"),
     }
-} 
+}
 
 
 # Password validation
@@ -127,8 +136,23 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DEFAULT_RECIPE_IMAGE_PATH = "static/images/default_recipe.jpg"
+
+# 상수 정의
+STATUS_SUCCESS = "success"
+STATUS_ERROR = "error"
+EMPTY_MESSAGE_ERROR = "메시지를 입력해주세요"
+CHAT_SAVE_ERROR = "대화 저장에 실패했습니다."
+UNKNOWN_ERROR = "알 수 없는 오류가 발생했습니다."
+
+# 설정값
+MAX_CHAT_TURNS = 5
+GPT_MODEL_NAME = "gpt-4o-mini"
+SYSTEM_RECIPE_EXPERT = "당신은 요리 전문가입니다."
+SYSTEM_RECIPE_FINDER = "사용자가 찾는 레시피나 음식을 파악해주세요."
