@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 import re
+from django.conf import settings
 
 
 # 레시피 정보를 API로부터 가져오는 함수
@@ -132,8 +133,11 @@ if st.session_state.selected_recipe:
     st.title(title)
 
     # DB 컬럼 RCP_IMG_URL 사용 (요리 이미지 URL)
-    if recipe.get("RCP_IMG_URL"):
-        st.image(recipe["RCP_IMG_URL"], width=400)
+    # 이미지가 없거나 빈 문자열인 경우 기본 이미지 사용
+    image_url = recipe.get("RCP_IMG_URL")
+    if not image_url or not image_url.strip():
+        image_url = f"{settings.STATIC_URL}images/default_recipe.jpg"
+    st.image(image_url, width=400)
 
     st.header("🔸 기본 정보")
     # DB 컬럼 CKG_TIME_NM (조리 시간) 및 CKG_INBUN_NM (인분)
