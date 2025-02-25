@@ -13,6 +13,7 @@ from recipe.models import (
 from recipe.serializers import RecipeListSerializer
 from .models import ChatLog
 from django.shortcuts import get_object_or_404
+from django.shortcuts import redirect
 
 
 # 환경 변수 로드 및 OpenAI API 키 설정
