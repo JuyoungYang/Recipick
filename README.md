@@ -8,13 +8,6 @@
 
 ---
 
-## 💁🏻 팀 소개
-
-![Group_4](https://github.com/user-attachments/assets/100e5944-1c0f-42b8-9e52-e56468f70ff4)
-
-
----
-
 ## 🚀 핵심 기능
 
 ### 🥗 레시피 조회 및 추천
